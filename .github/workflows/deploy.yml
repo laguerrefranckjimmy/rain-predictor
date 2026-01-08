@@ -1,67 +1,35 @@
-name: Deploy to AWS EC2
+name: Deploy to EC2
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - name: Checkout repo
+      uses: actions/checkout@v3
 
-    - name: Configure AWS credentials (GitHub)
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.9.0
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-    - name: Verify AWS identity
-      run: aws sts get-caller-identity
-
-    - name: Ensure ECR repository exists
+    - name: Copy files to EC2
       run: |
-        set -x
-        REPO_NAME=rain-predictor
-        aws ecr describe-repositories --repository-names $REPO_NAME \
-          || aws ecr create-repository --repository-name $REPO_NAME
+        ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} \
+        "mkdir -p ~/app"
+        rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./ ec2-user@${{ secrets.EC2_HOST }}:~/app/
 
-    - name: Login to Amazon ECR
+    - name: Build & run Docker on EC2
       run: |
-        set -x
-        aws ecr get-login-password \
-        | docker login \
-          --username AWS \
-          --password-stdin \
-          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-
-    - name: Build and push Docker image
-      run: |
-        set -x
-        IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rain-predictor:latest
-        docker build --progress=plain -t $IMAGE_URI .
-        docker push $IMAGE_URI
-
-    - name: Deploy on EC2
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_KEY }}
-        debug: true
-        script: |
-          set -x
-          # Pull latest image from ECR (EC2 IAM role must allow access)
-          docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rain-predictor:latest
-          # Stop old container if it exists
-          docker stop rain-api || true
-          docker rm rain-api || true
-          # Run container
-          docker run -d --restart unless-stopped \
-            --name rain-api \
-            -p 8000:8000 \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rain-predictor:latest
+        ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ~/app
+          docker build -t rain-predictor .
+          # Stop & remove existing container if exists
+          docker rm -f rain-predictor-container || true
+          docker run -d --name rain-predictor-container -p 80:80 rain-predictor
+        EOF
