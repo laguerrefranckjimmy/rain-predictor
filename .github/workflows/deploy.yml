@@ -1,48 +1,64 @@
-#!/bin/bash
-set -e  # Exit immediately if a command fails
+name: Deploy to EC2
 
-echo "==== Retrain started at $(date) ===="
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_reason:
+        description: "Reason for manual deploy"
+        required: false
+        default: "Manual deploy from GitHub UI"
 
-# Absolute paths
-PROJECT_DIR="/home/ec2-user/app/ml"
-VENV_DIR="$PROJECT_DIR/.venv"
-LOG_FILE="$PROJECT_DIR/retrain.log"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-# S3 bucket
-S3_BUCKET="rain-predictor-ml-data"
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-# Cities to predict
-CITIES=("Miami" "Orlando" "Tampa" "Jacksonville" "Fort Lauderdale")
+      - name: Show deploy trigger info
+        run: |
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Deploy reason: ${{ github.event.inputs.deploy_reason }}"
 
-# Ensure project directory exists
-cd $PROJECT_DIR || { echo "Project directory not found: $PROJECT_DIR"; exit 1; }
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "$VENV_DIR" ]; then
-    echo "⏳ Creating virtual environment..."
-    python3 -m venv $VENV_DIR
-fi
+      - name: Copy files to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} \
+          "mkdir -p ~/app"
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./ ec2-user@${{ secrets.EC2_HOST }}:~/app/
 
-# Activate virtual environment
-source $VENV_DIR/bin/activate
+      - name: Build & run Docker on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ~/app
+            docker build -t rain-predictor .
+            docker rm -f rain-predictor-container || true
+            docker run -d --name rain-predictor-container -p 80:80 rain-predictor
+          EOF
 
-# Upgrade pip and install requirements
-pip install --upgrade pip
-pip install -r "$PROJECT_DIR/requirements.txt"
+      - name: Create virtualenv and run retrain.sh
+        run: |
+          ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ~/app/ml
+            # Create virtual environment if it doesn't exist
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
 
-# Loop through cities for data ingestion
-for CITY in "${CITIES[@]}"; do
-    echo "⏳ Ingesting data for $CITY..."
-    python3 backend/ingest.py --city "$CITY" >> "$LOG_FILE" 2>&1
-done
+            # Activate venv and install dependencies
+            source .venv/bin/activate
+            pip install --upgrade pip
+            pip install -r ../requirements.txt
 
-# Train the model
-echo "⏳ Training model..."
-python3 backend/train.py >> "$LOG_FILE" 2>&1
-
-# Upload CSV and model to S3
-echo "⏳ Uploading files to S3..."
-aws s3 cp "$PROJECT_DIR/data.csv" "s3://$S3_BUCKET/data.csv" >> "$LOG_FILE" 2>&1
-aws s3 cp "$PROJECT_DIR/rain_model.pkl" "s3://$S3_BUCKET/rain_model.pkl" >> "$LOG_FILE" 2>&1
-
-echo "==== Retrain completed at $(date) ===="
+            # Make retrain.sh executable and run it
+            chmod +x retrain.sh
+            ./retrain.sh
+          EOF
