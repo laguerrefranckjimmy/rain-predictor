@@ -32,7 +32,7 @@ for city in CITIES:
         rows.append({
             "city": city,
             "temp": data["hourly"]["temperature_2m"][i],
-            "humidity": data["hourly"]["humidity"][i],
+            "humidity": data["hourly"]["relative_humidity_2m"][i],
             "rain": int(data["hourly"]["precipitation_probability"][i] > 30)
         })
 
