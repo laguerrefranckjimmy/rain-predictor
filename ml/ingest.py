@@ -17,7 +17,8 @@ def fetch_weather(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        "&hourly=precipitation_probability,temperature_2m,humidity"
+        "&hourly=precipitation_probability,temperature_2m,relative_humidity_2m"
+        "&timezone=America/New_York"
     )
     return requests.get(url).json()
 
