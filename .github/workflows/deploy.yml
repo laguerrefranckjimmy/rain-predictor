@@ -48,9 +48,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
             cd ~/app
-            ls
-            pwd
-            chmod +x /ml/retrain.sh
-
-            ./ml/retrain.sh
+            cd ml
+            chmod +x retrain.sh
+            ./retrain.sh
           EOF
