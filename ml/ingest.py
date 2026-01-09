@@ -1,8 +1,15 @@
 import pandas as pd
 import requests
 import boto3
+
+import sys
+from pathlib import Path
+# Add project root to sys.path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from backend.config import S3_BUCKET, DATA_KEY, CITIES
 from backend.convertcity import get_lat_lon
+
 
 s3 = boto3.client("s3")
 

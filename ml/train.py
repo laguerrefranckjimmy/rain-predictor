@@ -2,6 +2,12 @@ import boto3
 import pandas as pd
 import joblib
 from sklearn.linear_model import LogisticRegression
+import sys
+from pathlib import Path
+
+# Add project root to sys.path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from backend.config import S3_BUCKET, DATA_KEY, MODEL_KEY
 
 s3 = boto3.client("s3")
