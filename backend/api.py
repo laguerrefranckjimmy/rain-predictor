@@ -1,48 +1,36 @@
-from fastapi import FastAPI
-import joblib, requests, pandas as pd
-from datetime import datetime
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
-model = joblib.load("../model/rain_model.pkl")
+from backend.model_loader import load_model, get_model
+from backend.prediction import predict_rain
 
-THRESHOLD = 0.35
-FEATURES = [
-    "temperature_2m",
-    "relative_humidity_2m",
-    "cloud_cover",
-    "pressure_msl",
-    "wind_speed_10m",
-    "hour"
-]
+# Lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    load_model()  # safe even if model missing
+    yield
+    # Shutdown logic (if any)
+    # e.g., closing DB connections, cleanup
 
-def get_lat_lon(city):
-    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1"
-    return requests.get(url).json()["results"][0]["latitude"], \
-           requests.get(url).json()["results"][0]["longitude"]
+# Create app with lifespan
+app = FastAPI(lifespan=lifespan)
 
+# API endpoint
 @app.get("/predict")
 def predict(city: str):
-    lat, lon = get_lat_lon(city)
+    model = get_model()
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not trained yet. Please try again later."
+        )
+    return predict_rain(city, model)
 
-    url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lat}&longitude={lon}"
-        "&hourly=temperature_2m,relative_humidity_2m,"
-        "cloud_cover,pressure_msl,wind_speed_10m,precipitation"
-        "&timezone=America/New_York"
-    )
-
-    hourly = requests.get(url).json()["hourly"]
-    df = pd.DataFrame(hourly)
-    row = df.iloc[0]
-    row["hour"] = datetime.now().hour
-
-    X = row[FEATURES].values.reshape(1, -1)
-    prob = float(model.predict_proba(X)[0][1])
-
-    return {
-        "city": city,
-        "rain_probability": round(prob, 2),
-        "rain_next_hour": prob >= THRESHOLD,
-        "threshold": THRESHOLD
-    }
+# Serve React frontend
+app.mount(
+    "/",
+    StaticFiles(directory="frontend/dist", html=True),
+    name="frontend",
+)
