@@ -4,7 +4,7 @@ set -e
 echo "==== Retrain started at $(date) ===="
 
 # Go to project directory
-cd /home/ec2-user/ml
+cd /home/ec2-user/app/ml
 
 # Activate virtual environment
 source .venv/bin/activate
