@@ -1,11 +1,19 @@
 #!/bin/bash
 set -e
 
+echo "==== Retrain started at $(date) ===="
+
+# Go to project directory
+cd /home/ec2-user/ml
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Use python3 explicitly
 echo "⏳ Ingesting data..."
-python ml/ingest.py
+python3 backend/ingest.py
 
 echo "⏳ Training model..."
-python ml/train.py
+python3 backend/train.py
 
-echo "♻ Reloading model in API..."
-docker restart rain-predictor-container
+echo "==== Retrain completed at $(date) ===="
