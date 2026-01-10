@@ -1,15 +1,19 @@
 import { useState } from "react";
 
+const CITIES = [
+  "New York", "Los Angeles", "Chicago", "Houston", "Phoenix",
+  "Philadelphia", "San Antonio", "Dallas", "Miami", "San Diego"
+];
+
 export default function RainPredictor() {
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("FL");
+  const [city, setCity] = useState(CITIES[0]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const predict = async () => {
-    if (!city.trim()) {
-      setError("Please enter a city name");
+    if (!city) {
+      setError("Please select a city");
       return;
     }
 
@@ -18,9 +22,7 @@ export default function RainPredictor() {
     setResult(null);
 
     try {
-      const response = await fetch(
-        `/predict?city=${encodeURIComponent(city)}&state=${state}`
-      );
+      const response = await fetch(`/predict?city=${encodeURIComponent(city)}`);
 
       if (!response.ok) {
         const data = await response.json();
@@ -41,20 +43,14 @@ export default function RainPredictor() {
       <h2>🌧️ Hourly Rain Predictor</h2>
 
       <div style={styles.form}>
-        <input
-          type="text"
-          placeholder="Enter city (e.g. Miami)"
+        <select
           value={city}
           onChange={(e) => setCity(e.target.value)}
-          style={styles.input}
-        />
-
-        <select
-          value={state}
-          onChange={(e) => setState(e.target.value)}
           style={styles.select}
         >
-          <option value="FL">Florida</option>
+          {CITIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
 
         <button onClick={predict} disabled={loading} style={styles.button}>
@@ -66,22 +62,12 @@ export default function RainPredictor() {
 
       {result && (
         <div style={styles.result}>
-          <p>
-            <strong>{result.city}, {result.state}</strong>
-          </p>
-
-          <p>
-            Rain probability:{" "}
-            <strong>{Math.round(result.rain_probability * 100)}%</strong>
-          </p>
-
+          <p><strong>{result.city}</strong></p>
+          <p>Rain probability: <strong>{Math.round(result.rain_probability * 100)}%</strong></p>
           <p style={{ fontSize: "1.2em" }}>
             {result.rain_next_hour ? "☔ Rain Likely" : "☀️ No Rain Expected"}
           </p>
-
-          <p style={styles.meta}>
-            Threshold: {result.threshold}
-          </p>
+          <p style={styles.meta}>Threshold: {result.threshold}</p>
         </div>
       )}
     </div>
@@ -102,10 +88,6 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 10,
-  },
-  input: {
-    padding: 8,
-    fontSize: 16,
   },
   select: {
     padding: 8,
