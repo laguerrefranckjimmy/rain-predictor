@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend
+} from "recharts";
 
 const CITIES = [
   "New York", "Los Angeles", "Chicago", "Houston", "Phoenix",
@@ -11,6 +14,10 @@ export default function RainPredictor() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const [multiCityData, setMultiCityData] = useState([]);
+  const [multiCityLoading, setMultiCityLoading] = useState(true);
+
+  // Fetch single city prediction
   const predict = async () => {
     if (!city) {
       setError("Please select a city");
@@ -23,12 +30,10 @@ export default function RainPredictor() {
 
     try {
       const response = await fetch(`/predict?city=${encodeURIComponent(city)}`);
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.detail || "Prediction failed");
       }
-
       const data = await response.json();
       setResult(data);
     } catch (err) {
@@ -38,10 +43,36 @@ export default function RainPredictor() {
     }
   };
 
+  // Fetch all cities for comparison chart
+  useEffect(() => {
+    const fetchAllCities = async () => {
+      setMultiCityLoading(true);
+      const tempData = [];
+      for (let c of CITIES) {
+        try {
+          const res = await fetch(`/predict?city=${encodeURIComponent(c)}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          tempData.push({
+            city: c,
+            probability: Math.round(data.rain_probability * 100)
+          });
+        } catch (err) {
+          console.error("Error fetching city:", c, err);
+        }
+      }
+      setMultiCityData(tempData);
+      setMultiCityLoading(false);
+    };
+
+    fetchAllCities();
+  }, []);
+
   return (
     <div style={styles.container}>
       <h2>🌧️ Hourly Rain Predictor</h2>
 
+      {/* Single City Prediction */}
       <div style={styles.form}>
         <select
           value={city}
@@ -70,13 +101,30 @@ export default function RainPredictor() {
           <p style={styles.meta}>Threshold: {result.threshold}</p>
         </div>
       )}
+
+      {/* Multi-City Comparison Chart */}
+      <h3 style={{ marginTop: 40 }}>🌍 Multi-City Rain Probability</h3>
+      {multiCityLoading ? (
+        <p>Loading chart...</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={multiCityData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="city" />
+            <YAxis unit="%" />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="probability" name="Rain Probability" fill="#8884d8" />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
 
 const styles = {
   container: {
-    maxWidth: 420,
+    maxWidth: 720,
     margin: "60px auto",
     padding: 20,
     fontFamily: "Arial, sans-serif",
