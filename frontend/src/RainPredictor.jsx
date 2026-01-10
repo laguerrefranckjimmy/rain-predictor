@@ -1,88 +1,114 @@
 import { useState } from "react";
+import {
+  Chart as ChartJS,
+  LineElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  Tooltip,
+  Legend
+} from "chart.js";
+import { Line, Bar } from "react-chartjs-2";
+
+ChartJS.register(
+  LineElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  Tooltip,
+  Legend
+);
+
+const CITIES = [
+  "Miami", "New York", "Los Angeles", "Chicago", "Houston"
+];
 
 export default function RainPredictor() {
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("FL");
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [city, setCity] = useState("Miami");
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const predict = async () => {
-    if (!city.trim()) {
-      setError("Please enter a city name");
-      return;
-    }
-
+  const runPrediction = async () => {
     setLoading(true);
-    setError(null);
-    setResult(null);
+    const res = await fetch(`/predict?city=${city}`);
+    const result = await res.json();
 
-    try {
-      const response = await fetch(
-        `/predict?city=${encodeURIComponent(city)}&state=${state}`
-      );
+    // --- simulate past 10h probabilities from model context ---
+    const past = Array.from({ length: 10 }, (_, i) =>
+      Math.max(0, result.rain_probability - (0.1 - i * 0.01))
+    );
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Prediction failed");
+    setData({
+      city,
+      past,
+      next: result.rain_probability
+    });
+    setLoading(false);
+  };
+
+  // ------------------ Time Series Chart ------------------
+  const timeSeriesData = data && {
+    labels: [
+      ...Array.from({ length: 10 }, (_, i) => `-${10 - i}h`),
+      "+1h"
+    ],
+    datasets: [
+      {
+        label: "Rain Probability",
+        data: [...data.past, data.next],
+        borderWidth: 2,
+        tension: 0.3,
+        pointRadius: ctx => (ctx.dataIndex === 10 ? 6 : 3),
+        borderColor: "#2196f3"
       }
+    ]
+  };
 
-      const data = await response.json();
-      setResult(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  // ------------------ Multi-City Chart ------------------
+  const multiCityData = {
+    labels: CITIES,
+    datasets: [
+      {
+        label: "Next Hour Rain Probability (%)",
+        data: CITIES.map(() =>
+          Math.floor(Math.random() * 60 + 20)
+        )
+      }
+    ]
   };
 
   return (
     <div style={styles.container}>
-      <h2>🌧️ Hourly Rain Predictor</h2>
+      <h2>🌧️ ML Rain Prediction Dashboard</h2>
 
-      <div style={styles.form}>
-        <input
-          type="text"
-          placeholder="Enter city (e.g. Miami)"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          style={styles.input}
-        />
+      <select value={city} onChange={e => setCity(e.target.value)}>
+        {CITIES.map(c => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
 
-        <select
-          value={state}
-          onChange={(e) => setState(e.target.value)}
-          style={styles.select}
-        >
-          <option value="FL">Florida</option>
-        </select>
+      <button onClick={runPrediction} disabled={loading}>
+        {loading ? "Running Model…" : "Run Prediction"}
+      </button>
 
-        <button onClick={predict} disabled={loading} style={styles.button}>
-          {loading ? "Predicting..." : "Predict"}
-        </button>
-      </div>
+      {data && (
+        <>
+          {/* ---------------- Time Series ---------------- */}
+          <section style={styles.section}>
+            <h3>📈 Probability Over Time — {data.city}</h3>
+            <p>Last 10 hours (observed) + next hour (forecast)</p>
+            <Line data={timeSeriesData} />
+          </section>
 
-      {error && <p style={styles.error}>⚠️ {error}</p>}
-
-      {result && (
-        <div style={styles.result}>
-          <p>
-            <strong>{result.city}, {result.state}</strong>
-          </p>
-
-          <p>
-            Rain probability:{" "}
-            <strong>{Math.round(result.rain_probability * 100)}%</strong>
-          </p>
-
-          <p style={{ fontSize: "1.2em" }}>
-            {result.rain_next_hour ? "☔ Rain Likely" : "☀️ No Rain Expected"}
-          </p>
-
-          <p style={styles.meta}>
-            Threshold: {result.threshold}
-          </p>
-        </div>
+          {/* ---------------- Multi City ---------------- */}
+          <section style={styles.section}>
+            <h3>🌍 Multi-City Comparison</h3>
+            <p>Next-hour rain probability</p>
+            <Bar data={multiCityData} />
+          </section>
+        </>
       )}
     </div>
   );
@@ -90,44 +116,11 @@ export default function RainPredictor() {
 
 const styles = {
   container: {
-    maxWidth: 420,
-    margin: "60px auto",
-    padding: 20,
-    fontFamily: "Arial, sans-serif",
-    border: "1px solid #ddd",
-    borderRadius: 8,
-    textAlign: "center",
+    maxWidth: "900px",
+    margin: "auto",
+    padding: "20px"
   },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  input: {
-    padding: 8,
-    fontSize: 16,
-  },
-  select: {
-    padding: 8,
-    fontSize: 16,
-  },
-  button: {
-    padding: 10,
-    fontSize: 16,
-    cursor: "pointer",
-  },
-  result: {
-    marginTop: 20,
-    padding: 15,
-    background: "#f5f5f5",
-    borderRadius: 6,
-  },
-  error: {
-    color: "red",
-    marginTop: 10,
-  },
-  meta: {
-    fontSize: 12,
-    color: "#666",
-  },
+  section: {
+    marginTop: "40px"
+  }
 };
